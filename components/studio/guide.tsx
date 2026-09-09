@@ -1,0 +1,19 @@
+'use client';
+import { ArrowLeft, ArrowRight, BookOpen, Camera, Check, Cloud, Compass, Flower2, Gift, Guitar, Heart, Home, Leaf, Mic, Music2, Palette, PawPrint, Piano, RefreshCw, Shuffle, Smile, Sun, Users, Waves, Zap, Moon } from 'lucide-react';
+import { useState } from 'react';
+import type { Journey, Session } from '@/lib/creative/types';
+import { guide } from '@/lib/creative/engine';
+const icons={book:BookOpen,camera:Camera,cloud:Cloud,compass:Compass,flower:Flower2,gift:Gift,guitar:Guitar,heart:Heart,home:Home,leaf:Leaf,mic:Mic,music:Music2,paw:PawPrint,piano:Piano,refresh:RefreshCw,smile:Smile,sun:Sun,friends:Users,waves:Waves,bolt:Zap,moon:Moon,palette:Palette};
+export function ChoiceIcon({name,size=36}:{name?:string;size?:number}){const Icon=icons[name as keyof typeof icons]||Sun;return <Icon size={size} strokeWidth={1.6} aria-hidden="true"/>;}
+export default function Guide({journey,session,busy,onChoose,onBack,onGenerate,available,preview=false}:{journey:Journey;session:Session;busy:boolean;onChoose:(id:string,input?:string)=>void;onBack:()=>void;onGenerate:(sample:boolean)=>void;available:boolean;preview?:boolean}){
+ const {step}=guide(journey,session);const [input,setInput]=useState('');const [typing,setTyping]=useState(false);
+ return <section className="guide-surface"><div className="guide-topline"><button className="text-button" onClick={()=>{setTyping(false);onBack();}} disabled={busy}><ArrowLeft/> Back</button><span className="eyebrow">{journey.title}</span><span className="step-label">{step?`Choice ${session.history.length+1}`:'Your idea'}</span></div>
+ {step?<><div className="question-heading"><h1 tabIndex={-1} id="screen-heading">{step.question}</h1><p>{step.hint||'Choose what feels right to you.'}</p></div>{session.inherited&&<p className="inherited-note">Inspired by your earlier creation: {session.inherited}</p>}
+ <div className="choice-grid">{step.options.map((o,i)=><button disabled={busy} key={o.id} className={`choice-tile color-${i%4}`} onClick={()=>{setTyping(false);setInput('');onChoose(o.id);}}>{o.artwork?<img src={o.artwork} alt=""/>:<ChoiceIcon name={o.icon}/>}<span>{o.label}</span><ArrowRight size={22}/></button>)}</div>
+ <div className="guide-actions"><button className="button surprise-button" disabled={busy} onClick={()=>onChoose('surprise')}><Shuffle/> Surprise me</button>{step.allowInput&&<button className="button secondary" disabled={busy} onClick={()=>setTyping(!typing)}>Something else</button>}</div>
+ {typing&&<form className="free-input" onSubmit={e=>{e.preventDefault();if(input.trim()){onChoose('custom',input);setTyping(false);setInput('');}}}><label htmlFor="own-idea">Your own idea (a few words is enough)</label><input id="own-idea" value={input} onChange={e=>setInput(e.target.value)} maxLength={200}/><button className="button" disabled={!input.trim()||busy}>Use my idea <ArrowRight/></button></form>}
+ </>:<><div className="question-heading"><h1 tabIndex={-1} id="screen-heading">Ready to make it?</h1><p>Here’s what you’ve chosen. You can always change your mind.</p></div><div className="idea-summary">{session.history.map(s=><div key={s.stepId}><Check size={22}/><span>{s.label}</span></div>)}</div>
+ {!available&&!preview&&<div className="practice-notice"><strong>This part of the studio is still being connected.</strong><p>{journey.capability==='generate_music'?'For now, try an instrumental sketch with example lyrics. It won’t have a singing voice.':'You can try a prepared example to explore the steps. It won’t be a newly generated creation.'}</p></div>}
+ <div className="guide-actions"><button className="button primary-large" disabled={busy} onClick={()=>onGenerate(!available)}><ChoiceIcon name={journey.icon} size={26}/>{preview?'Preview result':available?journey.title:journey.capability==='generate_music'?'Try an instrumental sketch':'Try a practice version'}<ArrowRight/></button></div></>}
+ </section>;
+}

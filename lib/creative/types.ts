@@ -1,0 +1,9 @@
+export type Capability = 'generate_music' | 'generate_text' | 'generate_image' | 'create_printable';
+export type Choice = { id: string; label: string; icon?: string; artwork?: string; next?: string };
+export type Step = { id: string; question: string; hint?: string; options: Choice[]; allowInput?: boolean; next?: string };
+export type Journey = { id: string; version: number; title: string; description: string; capability: Capability; icon: string; artwork?: string; instruction: string; start: string; steps: Step[]; refinements: Choice[]; related: string[] };
+export type Selection = { stepId: string; value: string; label: string; surprise?: boolean };
+export type Session = { node: string; history: Selection[]; inherited?: string; seed: number };
+export type Artifact = { id: string; projectId: string; title: string; kind: 'music'|'text'|'image'|'printable'; text: string; media?: string; image?: string; mime?: string; sample: boolean; revision: number; parentId?: string; createdAt: string; change?: string; selections: Selection[] };
+export type Project = { id: string; title: string; journey: Journey; session: Session; status: 'choosing'|'ready'|'generating'|'review'|'complete'|'failed'; kept: boolean; artifacts: Artifact[]; activeArtifactId?: string; createdAt: string; updatedAt: string; version: number; generationId?: string; error?: string };
+export type StudioData = { journeys: Journey[]; projects: Project[]; availability: Record<Capability,boolean>; isAdmin: boolean; signedIn: boolean };
