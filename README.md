@@ -16,7 +16,7 @@ The current build is centered on Terry, a non-speaking touchscreen and stylus us
 - Encrypted provider keys when `APP_ENCRYPTION_KEY` is configured
 - ChatGPT account authentication when hosted with OpenAI Sites
 
-Suno is selected as the music provider, but live Suno generation deliberately remains disabled until the official Suno Platform API contract for the account is implemented. The application does not send credentials or creative choices to an unofficial proxy. ElevenLabs is prepared in the provider configuration for future narration and voice journeys.
+Live songs use the official Eleven Music API. The application creates a structured composition plan, generates an MP3 with Music v2, stores the finished audio in the project's media bucket, and displays the generated lyrics. ElevenLabs narration remains available as a separate future capability.
 
 ## Stack
 
@@ -79,17 +79,17 @@ Copy `.env.example` to `.env.local` for local development. Never commit the popu
 - `APP_ENCRYPTION_KEY`: 64 lowercase hexadecimal characters used to encrypt provider keys stored through the admin UI
 - `OPENAI_API_KEY`: enables live stories, artwork, cards, and printables
 - `OPENAI_TEXT_MODEL` and `OPENAI_IMAGE_MODEL`: optional model overrides
-- `SUNO_API_KEY`: reserved for the official Suno Platform connection
-- `ELEVENLABS_API_KEY`: reserved for future narration and voice journeys
+- `ELEVENLABS_API_KEY`: enables complete songs and is reserved for future narration
+- `ELEVENLABS_MUSIC_MODEL`: optional music model override; defaults to `music_v2`
 
 You can also add provider credentials in `/admin`; those keys are encrypted before being stored in D1.
 
 ## Deployment
 
-This repository is configured for OpenAI Sites in `.openai/hosting.json`. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the managed-hosting path and the exact remaining Suno work.
+This repository is configured for OpenAI Sites in `.openai/hosting.json`. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the managed-hosting path.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the application structure, data flow, security boundaries, and extension points.
 
 ## Product status
 
-This is a private-preview-quality V1 for hands-on testing with Terry. It is ready to put in GitHub and run locally. Before a wider public launch, complete the official Suno integration, carry out the Terry acceptance test, add automated browser coverage for the main journeys, and perform an accessibility audit with assistive technology.
+This is a private-preview-quality V1 for hands-on testing with Terry. It is ready to put in GitHub and run locally. Before a wider public launch, verify the Eleven Music integration with the account, carry out the Terry acceptance test, add automated browser coverage for the main journeys, and perform an accessibility audit with assistive technology.

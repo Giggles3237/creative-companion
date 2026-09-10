@@ -8,7 +8,7 @@ Studio interface
   -> Journey definition and session
   -> Generation API
   -> Capability/provider adapter
-  -> OpenAI, Suno, ElevenLabs, or local practice provider
+  -> OpenAI, ElevenLabs, or local practice provider
   -> D1 project/event records and R2 artifacts
 ```
 
@@ -44,12 +44,12 @@ Current mappings:
 
 | Capability | Live provider | Offline/practice behavior |
 | --- | --- | --- |
-| `generate_music` | Suno adapter pending | Locally composed WAV sketch |
+| `generate_music` | Eleven Music v2 | Locally composed WAV sketch |
 | `generate_text` | OpenAI Responses API | Prepared text example |
 | `generate_image` | OpenAI Images API | Prepared artwork |
 | `create_printable` | OpenAI Responses API | Prepared printable example |
 
-ElevenLabs credentials can be stored now, but no V1 journey invokes its capability yet.
+The song journey invokes Eleven Music. ElevenLabs narration is reserved for a future spoken-word capability.
 
 ## Data and storage
 
@@ -67,16 +67,6 @@ Do not expose the app directly without an equivalent trusted authentication laye
 
 For a built-in journey, add a validated `Journey` definition to `lib/creative/journeys.ts`. For content-managed journeys, create and publish a version through `/admin`. Reuse an existing capability or implement the provider behavior before publishing a journey that depends on a new one.
 
-## Completing Suno
+## Eleven Music flow
 
-Implement the official account-specific REST contract in `lib/creative/providers.ts`:
-
-1. Build an original song request from the journey instruction and selections.
-2. Submit it directly to the official Suno Platform endpoint.
-3. Handle asynchronous job polling or a signed callback, depending on the official contract.
-4. Fetch or reference the completed audio within the provider's documented retention and access rules.
-5. Persist the audio in R2 so projects do not depend on an expiring provider URL.
-6. Convert provider states and errors to the existing accessible status and retry flow.
-7. Record the provider model and generation result without logging the API key.
-
-The current adapter fails closed because the official Suno Platform documentation is available inside the signed-in developer dashboard and should be implemented from that source.
+For vocal songs, the provider creates a Music v2 composition plan from the guided selections. The returned plan supplies structured lyrics for the review screen and is then submitted to the composition endpoint. Instrumental songs use direct prompt composition with vocals forced off. Finished MP3 bytes are copied into R2 so projects do not depend on a temporary provider URL. Provider errors are converted into the existing accessible retry flow, and API keys are never logged.

@@ -34,14 +34,13 @@ Environment and secret values:
 - `OPENAI_API_KEY`
 - `OPENAI_TEXT_MODEL`
 - `OPENAI_IMAGE_MODEL`
-- `SUNO_API_KEY`
-- `SUNO_MUSIC_MODEL`
 - `ELEVENLABS_API_KEY`
+- `ELEVENLABS_MUSIC_MODEL`
 - `ELEVENLABS_VOICE_MODEL`
 
 ## Readiness gates for a public release
 
-- Complete and verify the official Suno API adapter.
+- Configure and verify the official Eleven Music API adapter.
 - Test the complete song-to-story path with Terry using her normal touchscreen and stylus.
 - Check focus order, screen-reader names, zoom, reduced motion, contrast, error recovery, and touch target size against WCAG 2.2 AA.
 - Add browser tests for starting, generating, refining, saving, reopening, and moving to a related journey.
