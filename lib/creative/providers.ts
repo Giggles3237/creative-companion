@@ -1,5 +1,5 @@
 import type { Project, Artifact } from './types';
-import { provider, PublicError, runtime } from './server';
+import { getMedia, provider, PublicError } from './server';
 import { selectionsText } from './engine';
 import { composeSketch, practiceText } from './samples';
 export type Output = {title:string;text:string;kind:Artifact['kind'];image?:string;bytes?:Uint8Array;mime?:string;provider:string};
@@ -43,7 +43,7 @@ export async function generate(p:Project,sample:boolean,change:string,previous?:
  }
  if(cap==='generate_image'){
  let payload:BodyInit;const headers:Record<string,string>={Authorization:`Bearer ${config.key}`};let url='https://api.openai.com/v1/images/generations';
- if(previous?.media&&!previous.sample){const source=await runtime().FILES.get(`artifacts/${p.id}/${previous.id}`);if(!source)throw new PublicError('The earlier picture could not be opened.',404);const form=new FormData();form.set('model',config.model);form.set('prompt',input);form.set('image',new Blob([await source.arrayBuffer()],{type:'image/png'}),'original.png');form.set('size','1024x1024');payload=form;url='https://api.openai.com/v1/images/edits';}else{headers['Content-Type']='application/json';payload=JSON.stringify({model:config.model,prompt:input,n:1,size:'1024x1024',quality:'medium'});}
+ if(previous?.media&&!previous.sample){const source=await getMedia(`artifacts/${p.id}/${previous.id}`);if(!source)throw new PublicError('The earlier picture could not be opened.',404);const form=new FormData();form.set('model',config.model);form.set('prompt',input);form.set('image',new Blob([source.data],{type:'image/png'}),'original.png');form.set('size','1024x1024');payload=form;url='https://api.openai.com/v1/images/edits';}else{headers['Content-Type']='application/json';payload=JSON.stringify({model:config.model,prompt:input,n:1,size:'1024x1024',quality:'medium'});}
  const r=await fetch(url,{method:'POST',headers,body:payload,signal:AbortSignal.timeout(180000)});if(!r.ok)throw new PublicError('That picture didn’t work. Want to try again?',502);const data=await r.json() as {data?:{b64_json?:string}[]};const b64=data.data?.[0]?.b64_json;if(!b64||b64.length>24000000)throw new PublicError('The picture could not be opened. Please try again.',502);return {kind:'image',title:`${p.session.history[0]?.label||'My artwork'}`,text:'',bytes:Uint8Array.from(atob(b64),c=>c.charCodeAt(0)),mime:'image/png',provider:`openai:${config.model}`};
  }
  const r=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:`Bearer ${config.key}`,'Content-Type':'application/json'},body:JSON.stringify({model:config.model,store:false,max_output_tokens:2200,instructions:p.journey.instruction,input:`${input}${previous?.text?`\nPrevious creation to revise:\n${previous.text}`:''}`}),signal:AbortSignal.timeout(120000)});

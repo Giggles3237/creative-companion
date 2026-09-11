@@ -11,20 +11,20 @@ The current build is centered on Terry, a non-speaking touchscreen and stylus us
 - Prepared examples for the other journeys, so the complete interaction can be tested immediately
 - OpenAI text and image generation when an OpenAI API key is configured
 - Project history, revisions, saving, related-journey discovery, and a “My creations” area
-- D1 database persistence and R2 artifact storage
-- An administrator area for journey visibility, journey versions, provider credentials, and generation logs
-- Encrypted provider keys when `APP_ENCRYPTION_KEY` is configured
-- ChatGPT account authentication when hosted with OpenAI Sites
+- PostgreSQL project persistence and Netlify Blobs artifact storage
+- An administrator area for journey visibility, journey versions, connection status, and generation logs
+- Netlify Identity accounts with private creations for each user
+- Server-only OpenAI and ElevenLabs environment variables
 
 Live songs use the official Eleven Music API. The application creates a structured composition plan, generates an MP3 with Music v2, stores the finished audio in the project's media bucket, and displays the generated lyrics. ElevenLabs narration remains available as a separate future capability.
 
 ## Stack
 
-- React 19, TypeScript, and vinext
-- Vite and Cloudflare Workers
-- Cloudflare D1 through Drizzle ORM
-- Cloudflare R2 for generated media
-- OpenAI Sites for authentication and managed hosting
+- React 19, Next.js, and TypeScript
+- Netlify’s OpenNext runtime
+- Netlify Database (PostgreSQL)
+- Netlify Blobs for generated media
+- Netlify Identity for authentication
 
 ## Run locally
 
@@ -41,9 +41,9 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open `http://localhost:3000`. The local Sites development plugin supplies the hosting runtime used by the project. Choose **Use a practice creation** when no provider credentials are configured.
+Run `npx netlify dev` and open the URL it prints. Netlify CLI supplies the local Identity, Database, and Blobs context. Choose **Use a practice creation** when no provider credentials are configured.
 
-To open the administrative area, set `ADMIN_EMAIL` in `.env.local`, configure `APP_ENCRYPTION_KEY`, then visit `http://localhost:3000/admin` using the matching account.
+To open the administrative area, set `ADMIN_EMAIL` in `.env.local`, then visit `/admin` using the matching Identity account.
 
 ## Verify the project
 
@@ -76,17 +76,16 @@ GitHub Actions will run the same validation on pushes and pull requests.
 Copy `.env.example` to `.env.local` for local development. Never commit the populated environment file. In a deployed environment, add values through the host's secret and environment settings.
 
 - `ADMIN_EMAIL`: account that can access `/admin`
-- `APP_ENCRYPTION_KEY`: 64 lowercase hexadecimal characters used to encrypt provider keys stored through the admin UI
 - `OPENAI_API_KEY`: enables live stories, artwork, cards, and printables
 - `OPENAI_TEXT_MODEL` and `OPENAI_IMAGE_MODEL`: optional model overrides
 - `ELEVENLABS_API_KEY`: enables complete songs and is reserved for future narration
 - `ELEVENLABS_MUSIC_MODEL`: optional music model override; defaults to `music_v2`
 
-You can also add provider credentials in `/admin`; those keys are encrypted before being stored in D1.
+Provider credentials are read only from server-side environment variables. `/admin` reports connection status without accepting or exposing secrets.
 
 ## Deployment
 
-This repository is configured for OpenAI Sites in `.openai/hosting.json`. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the managed-hosting path.
+This repository is configured for Netlify. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the complete GitHub import, Identity, database, and environment-variable setup.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the application structure, data flow, security boundaries, and extension points.
 

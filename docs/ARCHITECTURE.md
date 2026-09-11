@@ -9,7 +9,7 @@ Studio interface
   -> Generation API
   -> Capability/provider adapter
   -> OpenAI, ElevenLabs, or local practice provider
-  -> D1 project/event records and R2 artifacts
+  -> PostgreSQL project/event records and Netlify Blobs artifacts
 ```
 
 The user interface never asks the creator to select a model or write a prompt. A journey records small, understandable choices. The generation layer turns those choices into the provider instruction.
@@ -20,11 +20,11 @@ The user interface never asks the creator to select a model or write a prompt. A
 - `lib/creative/journeys.ts`: built-in journey definitions
 - `lib/creative/engine.ts`: choice validation and deterministic journey transitions
 - `lib/creative/providers.ts`: capability-to-provider routing and prepared/practice generation
-- `lib/creative/server.ts`: authentication, authorization, storage access, errors, encryption, and shared persistence helpers
+- `lib/creative/server.ts`: authorization, storage access, provider environment, errors, and shared persistence helpers
 - `app/api/studio/route.ts`: projects, guide choices, saving, revisions, and related journeys
 - `app/api/generate/route.ts`: idempotent, rate-limited generation and artifact persistence
-- `app/api/admin/route.ts`: protected provider and journey management
-- `db/schema.ts`: D1 schema expressed with Drizzle
+- `app/api/admin/route.ts`: protected connection status and journey management
+- `db/schema.ts`: PostgreSQL schema expressed with Drizzle
 
 ## Journey Engine
 
@@ -53,15 +53,13 @@ The song journey invokes Eleven Music. ElevenLabs narration is reserved for a fu
 
 ## Data and storage
 
-D1 stores users' project ownership references, project sessions, artifact metadata, generation requests, interaction events, versioned journeys, journey visibility settings, encrypted provider settings, and accessibility preferences. R2 stores generated binary media. API queries always scope projects to the authenticated user ID.
+Netlify Database stores users' project ownership references, project sessions, artifact metadata, generation requests, interaction events, versioned journeys, journey visibility settings, and accessibility preferences. Netlify Blobs stores generated binary media. API queries always scope projects to the authenticated user ID.
 
 Generation requests use client-generated idempotency keys, optimistic project versions, and a daily per-user limit. Raw provider failures are converted to short, recoverable messages.
 
 ## Authentication and administration
 
-OpenAI Sites injects the authenticated ChatGPT account headers. `/admin` additionally compares the authenticated email to `ADMIN_EMAIL`. Provider keys submitted there are encrypted with AES-GCM using `APP_ENCRYPTION_KEY` before storage.
-
-Do not expose the app directly without an equivalent trusted authentication layer. Client-supplied identity headers must never be accepted from the public internet.
+Netlify Identity verifies the account from its signed session cookie. `/admin` additionally compares the authenticated email to `ADMIN_EMAIL`. Provider keys exist only in Netlify's server-side environment and are never accepted by the application's browser interface.
 
 ## Adding a journey
 
@@ -69,4 +67,4 @@ For a built-in journey, add a validated `Journey` definition to `lib/creative/jo
 
 ## Eleven Music flow
 
-For vocal songs, the provider creates a Music v2 composition plan from the guided selections. The returned plan supplies structured lyrics for the review screen and is then submitted to the composition endpoint. Instrumental songs use direct prompt composition with vocals forced off. Finished MP3 bytes are copied into R2 so projects do not depend on a temporary provider URL. Provider errors are converted into the existing accessible retry flow, and API keys are never logged.
+For vocal songs, the provider creates a Music v2 composition plan from the guided selections. The returned plan supplies structured lyrics for the review screen and is then submitted to the composition endpoint. Instrumental songs use direct prompt composition with vocals forced off. Finished MP3 bytes are copied into Netlify Blobs so projects do not depend on a temporary provider URL. Provider errors are converted into the existing accessible retry flow, and API keys are never logged.
