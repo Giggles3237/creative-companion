@@ -3,6 +3,16 @@ import { provider, PublicError, runtime } from './server';
 import { selectionsText } from './engine';
 import { composeSketch, practiceText } from './samples';
 export type Output = {title:string;text:string;kind:Artifact['kind'];image?:string;bytes?:Uint8Array;mime?:string;provider:string};
+async function elevenMusicError(response:Response,stage:'plan'|'compose'){
+ let code='';try{const data=await response.clone().json() as {detail?:{status?:string}};code=data.detail?.status||'';}catch{}
+ console.error('Eleven Music request failed',{stage,httpStatus:response.status,code:code||'unknown',requestId:response.headers.get('request-id')||response.headers.get('x-request-id')||undefined});
+ if(response.status===401||code==='invalid_api_key')return new PublicError('The music connection needs to be reconnected by the studio administrator.',503);
+ if(response.status===403)return new PublicError('The music connection does not have permission to make songs. Ask the studio administrator to enable Music access.',503);
+ if(response.status===429)return new PublicError('The music service is busy or has reached its account limit. Your choices are saved. Please try again later.',429);
+ if(code==='quota_exceeded'||response.status===402)return new PublicError('The music account needs more song credits. Your choices are saved.',503);
+ if(response.status===422||code==='bad_composition_plan')return new PublicError('Those song directions could not be arranged. Try another version or change one choice.',422);
+ return new PublicError(stage==='plan'?'The music connection could not plan this song. Ask the studio administrator to check Music access and billing.':'The music service could not finish this song. Your choices are saved.',502);
+}
 export async function generate(p:Project,sample:boolean,change:string,previous?:Artifact):Promise<Output>{
  const cap=p.journey.capability;
  if(sample){const text=practiceText(p,change),get=(id:string)=>p.session.history.find(s=>s.stepId===id)?.value||'';if(cap==='generate_music')return {title:text.split('\n')[0],text,kind:'music',bytes:composeSketch(p.session.seed+p.artifacts.length*71,get('style'),get('mood'),get('pace'),change),mime:'audio/wav',provider:'practice-composer-v2'};const image=cap==='generate_image'?(get('subject')==='fox'?'/artwork/moonlit-fox.png':get('subject')==='flowers'?'/artwork/botanical-card.png':'/artwork/watercolor-elephant.png'):cap==='create_printable'?'/artwork/botanical-card.png':undefined;return {title:cap==='generate_image'?'A little inspiration':text.split('\n')[0],text:cap==='generate_image'?'A prepared studio example. Connect artwork creation to make a new picture from your choices.':text,kind:cap==='generate_image'?'image':cap==='create_printable'?'printable':'text',image,provider:'prepared-examples-v1'};}
@@ -17,7 +27,7 @@ export async function generate(p:Project,sample:boolean,change:string,previous?:
  let lyrics='';
  if(!instrumental){
   const planned=await fetch('https://api.elevenlabs.io/v1/music/plan',{method:'POST',headers,body:JSON.stringify({prompt,music_length_ms:40000,model_id:config.model}),signal:AbortSignal.timeout(120000)});
-  if(!planned.ok)throw new PublicError('The song idea didn’t come together. Want to try again?',502);
+  if(!planned.ok)throw await elevenMusicError(planned,'plan');
   compositionPlan=await planned.json();
   if(!compositionPlan||JSON.stringify(compositionPlan).length>120000)throw new PublicError('The song plan could not be opened. Please try again.',502);
   const plan=compositionPlan as {chunks?:{text?:string}[];sections?:{section_name?:string;lines?:string[]}[]};
@@ -25,7 +35,7 @@ export async function generate(p:Project,sample:boolean,change:string,previous?:
  }
  const body=instrumental?{prompt,music_length_ms:40000,model_id:config.model,force_instrumental:true}:{composition_plan:compositionPlan,model_id:config.model,respect_sections_durations:true};
  const made=await fetch('https://api.elevenlabs.io/v1/music?output_format=mp3_48000_192',{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(300000)});
- if(!made.ok)throw new PublicError('That song didn’t work. Want me to try again?',502);
+ if(!made.ok)throw await elevenMusicError(made,'compose');
  const size=Number(made.headers.get('content-length')||0);if(size>30000000)throw new PublicError('The finished song was too large to save. Please try a shorter version.',502);
  const bytes=new Uint8Array(await made.arrayBuffer());if(!bytes.length||bytes.length>30000000)throw new PublicError('The song could not be opened. Please try again.',502);
  const subject=p.session.history.find(s=>s.stepId==='subject')?.label||'Your idea';
