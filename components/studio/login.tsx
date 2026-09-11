@@ -2,21 +2,23 @@
 
 import { useEffect, useState } from 'react';
 import { ArrowRight, Check, KeyRound } from 'lucide-react';
-import { handleAuthCallback, login, signup } from '@netlify/identity';
+import { acceptInvite, handleAuthCallback, login, signup } from '@netlify/identity';
 
 export default function Login({ returnTo = '/' }: { returnTo?: string }) {
-  const [mode,setMode]=useState<'login'|'signup'>('login');
+  const [mode,setMode]=useState<'login'|'signup'|'invite'>('login');
+  const [inviteToken,setInviteToken]=useState('');
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
   const [message,setMessage]=useState('');
 
-  useEffect(()=>{handleAuthCallback().then(result=>{if(result)window.location.href=returnTo;}).catch(e=>setError((e as Error).message));},[returnTo]);
+  useEffect(()=>{handleAuthCallback().then(result=>{if(result?.type==='invite'&&result.token){setInviteToken(result.token);setMode('invite');window.history.replaceState(null,'','/login');}else if(result)window.location.href=returnTo;}).catch(e=>setError((e as Error).message));},[returnTo]);
 
   async function submit(event:React.FormEvent<HTMLFormElement>){
     event.preventDefault();setBusy(true);setError('');setMessage('');
     const form=new FormData(event.currentTarget),email=String(form.get('email')||''),password=String(form.get('password')||'');
     try{
-      if(mode==='login')await login(email,password);
+      if(mode==='invite')await acceptInvite(inviteToken,password);
+      else if(mode==='login')await login(email,password);
       else{
         const created=await signup(email,password,{full_name:String(form.get('name')||'')});
         if(!created.confirmedAt){setMessage('Check your email to finish creating your account.');return;}
@@ -26,5 +28,5 @@ export default function Login({ returnTo = '/' }: { returnTo?: string }) {
     finally{setBusy(false);}
   }
 
-  return <main className="login-page"><section className="login-panel" aria-labelledby="login-heading"><a className="wordmark" href="/">creative<br/><span>companion.</span></a><div className="login-icon" aria-hidden="true"><KeyRound/></div><p className="eyebrow">YOUR PRIVATE CREATIVE STUDIO</p><h1 id="login-heading">{mode==='login'?'Welcome back.':'Make your studio yours.'}</h1><p className="intro">{mode==='login'?'Sign in to find your creations and make something new.':'Create an account so your work stays private and waiting for you.'}</p>{error&&<p className="error-notice" role="alert">{error}</p>}{message&&<p className="success-notice" role="status"><Check/>{message}</p>}<form className="login-form" onSubmit={submit}>{mode==='signup'&&<label>Your name<input name="name" required autoComplete="name"/></label>}<label>Email address<input name="email" type="email" required autoComplete="email" inputMode="email"/></label><label>Password<input name="password" type="password" required minLength={8} autoComplete={mode==='login'?'current-password':'new-password'}/></label><button className="button" disabled={busy}>{busy?'One moment…':mode==='login'?<>Sign in <ArrowRight/></>:<>Create account <ArrowRight/></>}</button></form><button className="text-button login-mode" onClick={()=>{setMode(mode==='login'?'signup':'login');setError('');setMessage('');}}>{mode==='login'?'I need an account':'I already have an account'}</button></section></main>;
+  return <main className="login-page"><section className="login-panel" aria-labelledby="login-heading"><a className="wordmark" href="/">creative<br/><span>companion.</span></a><div className="login-icon" aria-hidden="true"><KeyRound/></div><p className="eyebrow">YOUR PRIVATE CREATIVE STUDIO</p><h1 id="login-heading">{mode==='login'?'Welcome back.':mode==='invite'?'Choose your password.':'Make your studio yours.'}</h1><p className="intro">{mode==='login'?'Sign in to find your creations and make something new.':mode==='invite'?'Your invitation is ready. Choose a password to open your studio.':'Create an account so your work stays private and waiting for you.'}</p>{error&&<p className="error-notice" role="alert">{error}</p>}{message&&<p className="success-notice" role="status"><Check/>{message}</p>}<form className="login-form" onSubmit={submit}>{mode==='signup'&&<label>Your name<input name="name" required autoComplete="name"/></label>}{mode!=='invite'&&<label>Email address<input name="email" type="email" required autoComplete="email" inputMode="email"/></label>}<label>Password<input name="password" type="password" required minLength={8} autoComplete={mode==='login'?'current-password':'new-password'}/></label><button className="button" disabled={busy}>{busy?'One moment…':mode==='login'?<>Sign in <ArrowRight/></>:mode==='invite'?<>Open my studio <ArrowRight/></>:<>Create account <ArrowRight/></>}</button></form>{mode!=='invite'&&<button className="text-button login-mode" onClick={()=>{setMode(mode==='login'?'signup':'login');setError('');setMessage('');}}>{mode==='login'?'I need an account':'I already have an account'}</button>}</section></main>;
 }
