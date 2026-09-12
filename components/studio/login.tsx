@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, Check, KeyRound } from 'lucide-react';
-import { acceptInvite, handleAuthCallback, login, signup, updateUser } from '@netlify/identity';
+import { acceptInvite, handleAuthCallback, login, requestPasswordRecovery, signup, updateUser } from '@netlify/identity';
 
 export default function Login({ returnTo = '/' }: { returnTo?: string }) {
-  const [mode,setMode]=useState<'login'|'signup'|'invite'|'recovery'>('login');
+  const [mode,setMode]=useState<'login'|'signup'|'invite'|'recovery'|'forgot'>('login');
   const [inviteToken,setInviteToken]=useState('');
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
@@ -41,6 +41,11 @@ export default function Login({ returnTo = '/' }: { returnTo?: string }) {
     event.preventDefault();setBusy(true);setError('');setMessage('');
     const form=new FormData(event.currentTarget),email=String(form.get('email')||''),password=String(form.get('password')||'');
     try{
+      if(mode==='forgot'){
+        await requestPasswordRecovery(email.trim());
+        setMessage('If an account exists for that email address, you’ll receive a link to reset your password. Check your inbox and spam folder.');
+        return;
+      }
       if(mode==='invite')await acceptInvite(inviteToken,password);
       else if(mode==='recovery')await updateUser({password});
       else if(mode==='login')await login(email,password);
@@ -53,5 +58,5 @@ export default function Login({ returnTo = '/' }: { returnTo?: string }) {
     finally{setBusy(false);}
   }
 
-  return <main className="login-page"><section className="login-panel" aria-labelledby="login-heading"><a className="wordmark" href="/">creative<br/><span>companion.</span></a><div className="login-icon" aria-hidden="true"><KeyRound/></div><p className="eyebrow">YOUR PRIVATE CREATIVE STUDIO</p><h1 id="login-heading">{mode==='login'?'Welcome back.':mode==='recovery'?'Reset your password.':mode==='invite'?'Choose your password.':'Make your studio yours.'}</h1><p className="intro">{mode==='login'?'Sign in to find your creations and make something new.':mode==='recovery'?'Choose a new password to return to your studio.':mode==='invite'?'Your invitation is ready. Choose a password to open your studio.':'Create an account so your work stays private and waiting for you.'}</p>{error&&<p className="error-notice" role="alert">{error}</p>}{message&&<p className="success-notice" role="status"><Check/>{message}</p>}<form className="login-form" onSubmit={submit}>{mode==='signup'&&<label>Your name<input name="name" required autoComplete="name"/></label>}{(mode==='login'||mode==='signup')&&<label>Email address<input name="email" type="email" required autoComplete="email" inputMode="email"/></label>}<label>Password<input name="password" type="password" required minLength={8} autoComplete={mode==='login'?'current-password':'new-password'}/></label><button className="button" disabled={busy}>{busy?'One moment…':mode==='login'?<>Sign in <ArrowRight/></>:mode==='recovery'?<>Save password <ArrowRight/></>:mode==='invite'?<>Open my studio <ArrowRight/></>:<>Create account <ArrowRight/></>}</button></form>{(mode==='login'||mode==='signup')&&<button className="text-button login-mode" onClick={()=>{setMode(mode==='login'?'signup':'login');setError('');setMessage('');}}>{mode==='login'?'I need an account':'I already have an account'}</button>}</section></main>;
+  return <main className="login-page"><section className="login-panel" aria-labelledby="login-heading"><a className="wordmark" href="/">creative<br/><span>companion.</span></a><div className="login-icon" aria-hidden="true"><KeyRound/></div><p className="eyebrow">YOUR PRIVATE CREATIVE STUDIO</p><h1 id="login-heading">{mode==='forgot'?'Forgot your password?':mode==='login'?'Welcome back.':mode==='recovery'?'Reset your password.':mode==='invite'?'Choose your password.':'Make your studio yours.'}</h1><p className="intro">{mode==='forgot'?'Enter your email address and we’ll send you a password reset link.':mode==='login'?'Sign in to find your creations and make something new.':mode==='recovery'?'Choose a new password to return to your studio.':mode==='invite'?'Your invitation is ready. Choose a password to open your studio.':'Create an account so your work stays private and waiting for you.'}</p>{error&&<p className="error-notice" role="alert">{error}</p>}{message&&<p className="success-notice" role="status"><Check/>{message}</p>}<form className="login-form" onSubmit={submit}>{mode==='signup'&&<label>Your name<input name="name" required autoComplete="name"/></label>}{(mode==='login'||mode==='signup'||mode==='forgot')&&<label>Email address<input name="email" type="email" required autoComplete="email" inputMode="email"/></label>}{mode!=='forgot'&&<label>Password<input name="password" type="password" required minLength={8} autoComplete={mode==='login'?'current-password':'new-password'}/></label>}<button className="button" disabled={busy}>{busy?'One moment…':mode==='forgot'?'Send reset link':mode==='login'?<>Sign in <ArrowRight/></>:mode==='recovery'?<>Save password <ArrowRight/></>:mode==='invite'?<>Open my studio <ArrowRight/></>:<>Create account <ArrowRight/></>}</button></form>{(mode==='login'||mode==='forgot')&&<button type="button" className="text-button login-mode" disabled={busy} onClick={()=>{setMode(mode==='forgot'?'login':'forgot');setError('');setMessage('');}}>{mode==='forgot'?'Back to sign in':'Forgot password?'}</button>}{(mode==='login'||mode==='signup')&&<button className="text-button login-mode" disabled={busy} onClick={()=>{setMode(mode==='login'?'signup':'login');setError('');setMessage('');}}>{mode==='login'?'I need an account':'I already have an account'}</button>}</section></main>;
 }

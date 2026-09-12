@@ -41,3 +41,29 @@ test('login callback does not redirect to itself',async()=>{
   const app=mount('components/studio/identity-redirect.tsx','#invite_token=test');
   await app.run();assert.equal(app.calls.length,0);
 });
+function findButton(node,label){if(!node||typeof node!=='object')return;if(node.type==='button'&&node.props.children===label)return node;for(const child of [node.props?.children].flat(Infinity)){const found=findButton(child,label);if(found)return found;}}
+test('forgot password requests a reset email without signing in or redirecting',async()=>{
+  let requested;
+  const app=mount(file,'',{handleAuthCallback:async()=>null,requestPasswordRecovery:async email=>{requested=email;}});
+  await app.run();
+  findButton(app.render(),'Forgot password?').props.onClick();
+  await findForm(app.render()).props.onSubmit({preventDefault(){},currentTarget:{email:' creator@example.com '}});
+  assert.equal(requested,'creator@example.com');
+  assert.match(app.states[4],/If an account exists/);
+  assert.equal(app.calls.length,0);
+  findButton(app.render(),'Back to sign in').props.onClick();
+  assert.equal(app.states[0],'login');assert.equal(app.states[4],'');
+});
+test('failed reset email can be retried',async()=>{
+  const app=mount(file,'',{handleAuthCallback:async()=>null,requestPasswordRecovery:async()=>{throw Error('Please try again later.');}});
+  await app.run();findButton(app.render(),'Forgot password?').props.onClick();
+  await findForm(app.render()).props.onSubmit({preventDefault(){},currentTarget:{email:'creator@example.com'}});
+  assert.equal(app.states[3],'Please try again later.');assert.equal(app.states[2],false);assert.equal(app.states[4],'');
+});
+test('recovery submits the replacement password',async()=>{
+  let updated;
+  const app=mount(file,'#recovery_token=test',{handleAuthCallback:async()=>({type:'recovery'}),updateUser:async data=>{updated=data;}});
+  await app.run();
+  await findForm(app.render()).props.onSubmit({preventDefault(){},currentTarget:{password:'replacement-password'}});
+  assert.equal(updated.password,'replacement-password');assert.equal(app.states[3],'');
+});
