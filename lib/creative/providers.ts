@@ -12,6 +12,10 @@ async function elevenMusicCode(response:Response){
  }catch{}
  return 'unknown';
 }
+async function elevenMusicDiagnostic(response:Response,stage:'compose'){
+ const code=await elevenMusicCode(response);
+ return {ok:response.ok,stage,httpStatus:response.status,code,requestId:response.headers.get('request-id')||response.headers.get('x-request-id')||undefined,contentType:response.headers.get('content-type')||undefined};
+}
 async function elevenMusicError(response:Response,stage:'plan'|'compose'){
  // Provider messages can contain the creator's prompt. Only expose recognized
  // error codes and HTTP status, never the raw response body or request headers.
@@ -29,6 +33,17 @@ async function elevenMusicError(response:Response,stage:'plan'|'compose'){
  return fail(stage==='plan'?'The music service could not plan this song. Your choices are saved. Share the error below with the studio administrator':'The music service could not finish this song. Your choices are saved. Share the error below with the studio administrator');
 }
 function withMusicModel<T extends Record<string,unknown>>(body:T,model?:string){return model?{...body,model_id:model}:body;}
+export async function testElevenMusicConnection(){
+ const config=await provider('elevenlabs-music');
+ if(!config.key)throw new PublicError('The ElevenLabs music key is not set in Netlify.',503);
+ const headers={'xi-api-key':config.key,'Content-Type':'application/json'};
+ const body=withMusicModel({prompt:'A cheerful original ten second acoustic jingle with simple warm vocals.',music_length_ms:10000},config.model);
+ const response=await fetch('https://api.elevenlabs.io/v1/music',{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(120000)});
+ const diagnostic=await elevenMusicDiagnostic(response,'compose');
+ if(!response.ok)return diagnostic;
+ const bytes=new Uint8Array(await response.arrayBuffer());
+ return {...diagnostic,bytes:bytes.length,model:config.model||'default'};
+}
 export async function generate(p:Project,sample:boolean,change:string,previous?:Artifact):Promise<Output>{
  const cap=p.journey.capability;
  if(sample){const text=practiceText(p,change),get=(id:string)=>p.session.history.find(s=>s.stepId===id)?.value||'';if(cap==='generate_music')return {title:text.split('\n')[0],text,kind:'music',bytes:composeSketch(p.session.seed+p.artifacts.length*71,get('style'),get('mood'),get('pace'),change),mime:'audio/wav',provider:'practice-composer-v2'};const image=cap==='generate_image'?(get('subject')==='fox'?'/artwork/moonlit-fox.png':get('subject')==='flowers'?'/artwork/botanical-card.png':'/artwork/watercolor-elephant.png'):cap==='create_printable'?'/artwork/botanical-card.png':undefined;return {title:cap==='generate_image'?'A little inspiration':text.split('\n')[0],text:cap==='generate_image'?'A prepared studio example. Connect artwork creation to make a new picture from your choices.':text,kind:cap==='generate_image'?'image':cap==='create_printable'?'printable':'text',image,provider:'prepared-examples-v1'};}
