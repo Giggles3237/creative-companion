@@ -14,10 +14,10 @@ function provider(responses){
 const project={journey:{capability:'generate_music',instruction:'Write an original song.'},session:{history:[{stepId:'subject',value:'love',label:'Someone I love'},{stepId:'voice',value:'singing'}]},artifacts:[]};
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json'}});
 
-test('planning rejection exposes status without falsely blaming billing or revealing response content',async()=>{
- const app=provider([json({detail:{status:'bad_request',message:'private song text secret-test-key'}},400)]);
+test('permission rejections expose status without falsely blaming billing or revealing response content',async()=>{
+ const app=provider([json({detail:{status:'missing_permissions',message:'private song text secret-test-key'}},403)]);
  await assert.rejects(app.generate(project,false,''),e=>{
-  assert.match(e.message,/Music plan: HTTP 400, bad_request/);
+  assert.match(e.message,/Music plan: HTTP 403, missing_permissions/);
   assert.doesNotMatch(e.message,/billing|private song text|secret-test-key/);return true;
  });
  assert.equal(app.calls.length,1);
@@ -47,6 +47,16 @@ test('successful vocal song keeps the plan lyrics and generated audio',async()=>
  assert.equal(app.calls[0].url,'https://api.elevenlabs.io/v1/music/plan');
  assert.deepEqual(app.calls[1].body.composition_plan,plan);
  assert.equal(result.text,plan.chunks[0].text);assert.equal(result.bytes.length,3);
+});
+test('planning validation failures fall back to direct composition',async()=>{
+ const app=provider([json({detail:{status:'bad_request'}},400),new Response(new Uint8Array([73,68,51]))]);
+ const result=await app.generate(project,false,'');
+ assert.equal(app.calls.length,2);
+ assert.equal(app.calls[0].url,'https://api.elevenlabs.io/v1/music/plan');
+ assert.equal(app.calls[1].url,'https://api.elevenlabs.io/v1/music?output_format=mp3_48000_192');
+ assert.equal(app.calls[1].body.composition_plan,undefined);
+ assert.match(app.calls[1].body.prompt,/Create one original 40-second song/);
+ assert.equal(result.bytes.length,3);
 });
 test('composition failures are labeled separately from planning failures',async()=>{
  const app=provider([json({chunks:[{text:'Lyrics'}]}),json({detail:{status:'too_many_concurrent_requests'}},429)]);

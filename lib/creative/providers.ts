@@ -3,16 +3,19 @@ import { getMedia, provider, PublicError } from './server';
 import { selectionsText } from './engine';
 import { composeSketch, practiceText } from './samples';
 export type Output = {title:string;text:string;kind:Artifact['kind'];image?:string;bytes?:Uint8Array;mime?:string;provider:string};
-async function elevenMusicError(response:Response,stage:'plan'|'compose'){
- // Provider messages can contain the creator's prompt. Only expose recognized
- // error codes and HTTP status, never the raw response body or request headers.
- const knownCodes=new Set(['invalid_api_key','missing_permissions','quota_exceeded','rate_limit_exceeded','too_many_concurrent_requests','bad_composition_plan','bad_request','invalid_model_id','model_not_found','model_not_supported','model_not_available','prompt_too_long','content_policy_violation','prompt_blocked','payment_required','subscription_required']);
- let code='unknown';
+const knownElevenMusicCodes=new Set(['invalid_api_key','missing_permissions','quota_exceeded','rate_limit_exceeded','too_many_concurrent_requests','bad_composition_plan','bad_request','invalid_model_id','model_not_found','model_not_supported','model_not_available','prompt_too_long','content_policy_violation','prompt_blocked','payment_required','subscription_required']);
+async function elevenMusicCode(response:Response){
  try{
   const data=await response.clone().json() as {detail?:{status?:unknown;code?:unknown};error?:{code?:unknown};code?:unknown};
   const value=data?.detail?.status||data?.detail?.code||data?.error?.code||data?.code;
-  if(typeof value==='string'&&knownCodes.has(value))code=value;
+  if(typeof value==='string'&&knownElevenMusicCodes.has(value))return value;
  }catch{}
+ return 'unknown';
+}
+async function elevenMusicError(response:Response,stage:'plan'|'compose'){
+ // Provider messages can contain the creator's prompt. Only expose recognized
+ // error codes and HTTP status, never the raw response body or request headers.
+ const code=await elevenMusicCode(response);
  console.error('Eleven Music request failed',{stage,httpStatus:response.status,code,requestId:response.headers.get('request-id')||response.headers.get('x-request-id')||undefined});
  const fail=(message:string,status=502)=>new PublicError(`${message} (Music ${stage}: HTTP ${response.status}${code==='unknown'?'':`, ${code}`}).`,status);
  if(code==='quota_exceeded'||response.status===402)return fail('The music account has reached its credit limit. Your choices are saved',503);
@@ -25,6 +28,7 @@ async function elevenMusicError(response:Response,stage:'plan'|'compose'){
  if(response.status>=500)return fail('The music service had a problem. Your choices are saved. Please try again later');
  return fail(stage==='plan'?'The music service could not plan this song. Your choices are saved. Share the error below with the studio administrator':'The music service could not finish this song. Your choices are saved. Share the error below with the studio administrator');
 }
+async function shouldComposeWithoutPlan(response:Response){const code=await elevenMusicCode(response);return [400,422].includes(response.status)&&(code==='unknown'||code==='bad_request');}
 export async function generate(p:Project,sample:boolean,change:string,previous?:Artifact):Promise<Output>{
  const cap=p.journey.capability;
  if(sample){const text=practiceText(p,change),get=(id:string)=>p.session.history.find(s=>s.stepId===id)?.value||'';if(cap==='generate_music')return {title:text.split('\n')[0],text,kind:'music',bytes:composeSketch(p.session.seed+p.artifacts.length*71,get('style'),get('mood'),get('pace'),change),mime:'audio/wav',provider:'practice-composer-v2'};const image=cap==='generate_image'?(get('subject')==='fox'?'/artwork/moonlit-fox.png':get('subject')==='flowers'?'/artwork/botanical-card.png':'/artwork/watercolor-elephant.png'):cap==='create_printable'?'/artwork/botanical-card.png':undefined;return {title:cap==='generate_image'?'A little inspiration':text.split('\n')[0],text:cap==='generate_image'?'A prepared studio example. Connect artwork creation to make a new picture from your choices.':text,kind:cap==='generate_image'?'image':cap==='create_printable'?'printable':'text',image,provider:'prepared-examples-v1'};}
@@ -37,15 +41,20 @@ export async function generate(p:Project,sample:boolean,change:string,previous?:
  const headers={'xi-api-key':config.key,'Content-Type':'application/json'};
  let compositionPlan:unknown;
  let lyrics='';
+ let planFailed=false;
  if(!instrumental){
   const planned=await fetch('https://api.elevenlabs.io/v1/music/plan',{method:'POST',headers,body:JSON.stringify({prompt,music_length_ms:40000,model_id:config.model}),signal:AbortSignal.timeout(120000)});
-  if(!planned.ok)throw await elevenMusicError(planned,'plan');
-  compositionPlan=await planned.json();
-  if(!compositionPlan||JSON.stringify(compositionPlan).length>120000)throw new PublicError('The song plan could not be opened. Please try again.',502);
-  const plan=compositionPlan as {chunks?:{text?:string}[];sections?:{section_name?:string;lines?:string[]}[]};
-  lyrics=plan.chunks?.map(chunk=>chunk.text||'').filter(Boolean).join('\n\n')||plan.sections?.map(section=>`[${section.section_name||'Section'}]\n${(section.lines||[]).join('\n')}`).join('\n\n')||'';
+  if(planned.ok){
+   compositionPlan=await planned.json();
+   if(!compositionPlan||JSON.stringify(compositionPlan).length>120000)throw new PublicError('The song plan could not be opened. Please try again.',502);
+   const plan=compositionPlan as {chunks?:{text?:string}[];sections?:{section_name?:string;lines?:string[]}[]};
+   lyrics=plan.chunks?.map(chunk=>chunk.text||'').filter(Boolean).join('\n\n')||plan.sections?.map(section=>`[${section.section_name||'Section'}]\n${(section.lines||[]).join('\n')}`).join('\n\n')||'';
+  }else if(await shouldComposeWithoutPlan(planned)){
+   planFailed=true;
+   console.error('Eleven Music plan rejected; composing directly',{httpStatus:planned.status,requestId:planned.headers.get('request-id')||planned.headers.get('x-request-id')||undefined});
+  }else throw await elevenMusicError(planned,'plan');
  }
- const body=instrumental?{prompt,music_length_ms:40000,model_id:config.model,force_instrumental:true}:{composition_plan:compositionPlan,model_id:config.model,respect_sections_durations:true};
+ const body=instrumental||planFailed?{prompt,music_length_ms:40000,model_id:config.model,...(instrumental?{force_instrumental:true}:{})}:{composition_plan:compositionPlan,model_id:config.model,respect_sections_durations:true};
  const made=await fetch('https://api.elevenlabs.io/v1/music?output_format=mp3_48000_192',{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(300000)});
  if(!made.ok)throw await elevenMusicError(made,'compose');
  const size=Number(made.headers.get('content-length')||0);if(size>30000000)throw new PublicError('The finished song was too large to save. Please try a shorter version.',502);
