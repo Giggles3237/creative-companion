@@ -28,7 +28,6 @@ async function elevenMusicError(response:Response,stage:'plan'|'compose'){
  if(response.status>=500)return fail('The music service had a problem. Your choices are saved. Please try again later');
  return fail(stage==='plan'?'The music service could not plan this song. Your choices are saved. Share the error below with the studio administrator':'The music service could not finish this song. Your choices are saved. Share the error below with the studio administrator');
 }
-async function shouldComposeWithoutPlan(response:Response){const code=await elevenMusicCode(response);return [400,422].includes(response.status)&&(code==='unknown'||code==='bad_request');}
 function withMusicModel<T extends Record<string,unknown>>(body:T,model?:string){return model?{...body,model_id:model}:body;}
 export async function generate(p:Project,sample:boolean,change:string,previous?:Artifact):Promise<Output>{
  const cap=p.journey.capability;
@@ -40,28 +39,13 @@ export async function generate(p:Project,sample:boolean,change:string,previous?:
  const instrumental=selected('voice')==='instrumental';
  const prompt=`${input}\nCreate one original 40-second song. ${instrumental?'Instrumental only, with no voice, spoken words, or lyrics.':'Write and sing original lyrics with a clear verse, memorable chorus, and brief ending.'} Never reference or imitate a real artist, songwriter, recording, album, or existing song.`;
  const headers={'xi-api-key':config.key,'Content-Type':'application/json'};
- let compositionPlan:unknown;
- let lyrics='';
- let planFailed=false;
- if(!instrumental){
-  const planned=await fetch('https://api.elevenlabs.io/v1/music/plan',{method:'POST',headers,body:JSON.stringify(withMusicModel({prompt,music_length_ms:40000},config.model)),signal:AbortSignal.timeout(120000)});
-  if(planned.ok){
-   compositionPlan=await planned.json();
-   if(!compositionPlan||JSON.stringify(compositionPlan).length>120000)throw new PublicError('The song plan could not be opened. Please try again.',502);
-   const plan=compositionPlan as {chunks?:{text?:string}[];sections?:{section_name?:string;lines?:string[]}[]};
-   lyrics=plan.chunks?.map(chunk=>chunk.text||'').filter(Boolean).join('\n\n')||plan.sections?.map(section=>`[${section.section_name||'Section'}]\n${(section.lines||[]).join('\n')}`).join('\n\n')||'';
-  }else if(await shouldComposeWithoutPlan(planned)){
-   planFailed=true;
-   console.error('Eleven Music plan rejected; composing directly',{httpStatus:planned.status,requestId:planned.headers.get('request-id')||planned.headers.get('x-request-id')||undefined});
-  }else throw await elevenMusicError(planned,'plan');
- }
- const body=instrumental||planFailed?withMusicModel({prompt,music_length_ms:40000,...(instrumental?{force_instrumental:true}:{})},config.model):withMusicModel({composition_plan:compositionPlan,respect_sections_durations:true},config.model);
+ const body=withMusicModel({prompt,music_length_ms:40000,...(instrumental?{force_instrumental:true}:{})},config.model);
  const made=await fetch('https://api.elevenlabs.io/v1/music',{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(300000)});
  if(!made.ok)throw await elevenMusicError(made,'compose');
  const size=Number(made.headers.get('content-length')||0);if(size>30000000)throw new PublicError('The finished song was too large to save. Please try a shorter version.',502);
  const bytes=new Uint8Array(await made.arrayBuffer());if(!bytes.length||bytes.length>30000000)throw new PublicError('The song could not be opened. Please try again.',502);
  const subject=p.session.history.find(s=>s.stepId==='subject')?.label||'Your idea';
- return {kind:'music',title:`A song about ${subject.toLowerCase()}`,text:lyrics||`An original instrumental inspired by ${subject.toLowerCase()}.`,bytes,mime:'audio/mpeg',provider:`elevenlabs:${config.model||'default'}`};
+ return {kind:'music',title:`A song about ${subject.toLowerCase()}`,text:`An original ${instrumental?'instrumental':'song'} inspired by ${subject.toLowerCase()}.`,bytes,mime:'audio/mpeg',provider:`elevenlabs:${config.model||'default'}`};
  }
  if(cap==='generate_image'){
  const imageModel=config.model||'gpt-image-1';

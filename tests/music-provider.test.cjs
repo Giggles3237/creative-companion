@@ -17,7 +17,7 @@ const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:
 test('permission rejections expose status without falsely blaming billing or revealing response content',async()=>{
  const app=provider([json({detail:{status:'missing_permissions',message:'private song text secret-test-key'}},403)]);
  await assert.rejects(app.generate(project,false,''),e=>{
-  assert.match(e.message,/Music plan: HTTP 403, missing_permissions/);
+  assert.match(e.message,/Music compose: HTTP 403, missing_permissions/);
   assert.doesNotMatch(e.message,/billing|private song text|secret-test-key/);return true;
  });
  assert.equal(app.calls.length,1);
@@ -25,7 +25,7 @@ test('permission rejections expose status without falsely blaming billing or rev
 });
 test('non-JSON upstream failures remain diagnosable',async()=>{
  const app=provider([new Response('<html>upstream error</html>',{status:502})]);
- await assert.rejects(app.generate(project,false,''),/Music plan: HTTP 502/);
+ await assert.rejects(app.generate(project,false,''),/Music compose: HTTP 502/);
 });
 test('quota status takes precedence over a permission HTTP status',async()=>{
  const app=provider([json({detail:{status:'quota_exceeded'}},403)]);
@@ -41,27 +41,15 @@ test('unrecognized provider codes are not reflected into logs or UI',async()=>{
  assert.doesNotMatch(JSON.stringify(app.logs),/secret-test-key/);
 });
 test('successful vocal song keeps the plan lyrics and generated audio',async()=>{
- const plan={chunks:[{text:'[Verse]\nA brand new day',duration_ms:40000,positive_styles:['country'],negative_styles:[]}]};
- const app=provider([json(plan),new Response(new Uint8Array([73,68,51]))]);
+ const app=provider([new Response(new Uint8Array([73,68,51]))]);
  const result=await app.generate(project,false,'');
- assert.equal(app.calls[0].url,'https://api.elevenlabs.io/v1/music/plan');
+ assert.equal(app.calls[0].url,'https://api.elevenlabs.io/v1/music');
  assert.equal(app.calls[0].body.model_id,undefined);
- assert.deepEqual(app.calls[1].body.composition_plan,plan);
- assert.equal(app.calls[1].body.model_id,undefined);
- assert.equal(result.text,plan.chunks[0].text);assert.equal(result.bytes.length,3);
-});
-test('planning validation failures fall back to direct composition',async()=>{
- const app=provider([json({detail:{status:'bad_request'}},400),new Response(new Uint8Array([73,68,51]))]);
- const result=await app.generate(project,false,'');
- assert.equal(app.calls.length,2);
- assert.equal(app.calls[0].url,'https://api.elevenlabs.io/v1/music/plan');
- assert.equal(app.calls[1].url,'https://api.elevenlabs.io/v1/music');
- assert.equal(app.calls[1].body.composition_plan,undefined);
- assert.equal(app.calls[1].body.model_id,undefined);
- assert.match(app.calls[1].body.prompt,/Create one original 40-second song/);
+ assert.equal(app.calls[0].body.composition_plan,undefined);
+ assert.match(app.calls[0].body.prompt,/Create one original 40-second song/);
  assert.equal(result.bytes.length,3);
 });
 test('composition failures are labeled separately from planning failures',async()=>{
- const app=provider([json({chunks:[{text:'Lyrics'}]}),json({detail:{status:'too_many_concurrent_requests'}},429)]);
+ const app=provider([json({detail:{status:'too_many_concurrent_requests'}},429)]);
  await assert.rejects(app.generate(project,false,''),/Music compose: HTTP 429, too_many_concurrent_requests/);
 });
