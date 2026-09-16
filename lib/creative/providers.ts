@@ -12,9 +12,20 @@ async function elevenMusicCode(response:Response){
  }catch{}
  return 'unknown';
 }
+function shortClean(value:unknown){
+ if(typeof value!=='string')return;
+ return value.replace(/[A-Za-z0-9_-]{16,}/g,'[hidden]').replace(/secret[-\w]*/gi,'[hidden]').replace(/private prompt/gi,'provider message').slice(0,180);
+}
+async function elevenMusicDetail(response:Response){
+ try{
+  const data=await response.clone().json() as {detail?:unknown;message?:unknown;error?:unknown};
+  const detail=typeof data.detail==='object'&&data.detail?data.detail as {message?:unknown;detail?:unknown}:undefined;
+  return shortClean(detail?.message)||shortClean(detail?.detail)||shortClean(data.message)||shortClean(typeof data.error==='string'?data.error:undefined);
+ }catch{}
+}
 async function elevenMusicDiagnostic(response:Response,stage:'compose'){
  const code=await elevenMusicCode(response);
- return {ok:response.ok,stage,httpStatus:response.status,code,requestId:response.headers.get('request-id')||response.headers.get('x-request-id')||undefined,contentType:response.headers.get('content-type')||undefined};
+ return {ok:response.ok,stage,httpStatus:response.status,code,detail:await elevenMusicDetail(response),requestId:response.headers.get('request-id')||response.headers.get('x-request-id')||undefined,contentType:response.headers.get('content-type')||undefined};
 }
 async function elevenMusicError(response:Response,stage:'plan'|'compose'){
  // Provider messages can contain the creator's prompt. Only expose recognized
@@ -37,12 +48,22 @@ export async function testElevenMusicConnection(){
  const config=await provider('elevenlabs-music');
  if(!config.key)throw new PublicError('The ElevenLabs music key is not set in Netlify.',503);
  const headers={'xi-api-key':config.key,'Content-Type':'application/json'};
- const body=withMusicModel({prompt:'A cheerful original ten second acoustic jingle with simple warm vocals.',music_length_ms:10000},config.model);
- const response=await fetch('https://api.elevenlabs.io/v1/music',{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(120000)});
- const diagnostic=await elevenMusicDiagnostic(response,'compose');
- if(!response.ok)return diagnostic;
- const bytes=new Uint8Array(await response.arrayBuffer());
- return {...diagnostic,bytes:bytes.length,model:config.model||'default'};
+ const prompt='A cheerful original ten second acoustic jingle with simple warm vocals.';
+ const attempts=[
+  {name:'default-length',body:{prompt,music_length_ms:10000}},
+  {name:'default-prompt-only',body:{prompt}},
+  {name:'music-v2-length',body:{prompt,music_length_ms:10000,model_id:'music_v2'}},
+  {name:'instrumental',body:{prompt:'A cheerful original ten second acoustic instrumental jingle.',music_length_ms:10000,force_instrumental:true}},
+ ];
+ if(config.model)attempts.unshift({name:'configured-model',body:{prompt,music_length_ms:10000,model_id:config.model}});
+ const results=[];
+ for(const attempt of attempts){
+  const response=await fetch('https://api.elevenlabs.io/v1/music',{method:'POST',headers,body:JSON.stringify(attempt.body),signal:AbortSignal.timeout(120000)});
+  const diagnostic=await elevenMusicDiagnostic(response,'compose');
+  if(response.ok){const bytes=new Uint8Array(await response.arrayBuffer());return {...diagnostic,attempt:attempt.name,bytes:bytes.length,model:(attempt.body as {model_id?:string}).model_id||'default',attempts:[...results,{...diagnostic,attempt:attempt.name}]};}
+  results.push({...diagnostic,attempt:attempt.name});
+ }
+ return {ok:false,stage:'compose' as const,httpStatus:results[0]?.httpStatus||0,code:results[0]?.code||'unknown',attempts:results};
 }
 export async function generate(p:Project,sample:boolean,change:string,previous?:Artifact):Promise<Output>{
  const cap=p.journey.capability;

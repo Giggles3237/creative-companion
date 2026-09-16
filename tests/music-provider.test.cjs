@@ -54,11 +54,17 @@ test('composition failures are labeled separately from planning failures',async(
  await assert.rejects(app.generate(project,false,''),/Music compose: HTTP 429, too_many_concurrent_requests/);
 });
 test('admin music diagnostic reports sanitized compose failure details',async()=>{
- const app=provider([json({detail:{status:'bad_request',message:'private prompt secret-test-key'}},400)]);
+ const app=provider([
+  json({detail:{status:'bad_request',message:'private prompt secret-test-key'}},400),
+  json({detail:{status:'bad_request'}},400),
+  json({detail:{status:'bad_request'}},400),
+  json({detail:{status:'bad_request'}},400)
+ ]);
  const result=await app.testElevenMusicConnection();
  assert.equal(result.ok,false);
  assert.equal(result.httpStatus,400);
  assert.equal(result.code,'bad_request');
+ assert.equal(result.attempts.length,4);
  assert.doesNotMatch(JSON.stringify(result),/private prompt|secret-test-key/);
 });
 test('admin music diagnostic reports audio bytes on success',async()=>{
@@ -68,4 +74,5 @@ test('admin music diagnostic reports audio bytes on success',async()=>{
  assert.equal(result.httpStatus,200);
  assert.equal(result.bytes,4);
  assert.equal(result.model,'default');
+ assert.equal(result.attempt,'default-length');
 });
