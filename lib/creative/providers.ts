@@ -4,14 +4,26 @@ import { selectionsText } from './engine';
 import { composeSketch, practiceText } from './samples';
 export type Output = {title:string;text:string;kind:Artifact['kind'];image?:string;bytes?:Uint8Array;mime?:string;provider:string};
 async function elevenMusicError(response:Response,stage:'plan'|'compose'){
- let code='';try{const data=await response.clone().json() as {detail?:{status?:string}};code=data.detail?.status||'';}catch{}
- console.error('Eleven Music request failed',{stage,httpStatus:response.status,code:code||'unknown',requestId:response.headers.get('request-id')||response.headers.get('x-request-id')||undefined});
- if(response.status===401||code==='invalid_api_key')return new PublicError('The music connection needs to be reconnected by the studio administrator.',503);
- if(response.status===403)return new PublicError('The music connection does not have permission to make songs. Ask the studio administrator to enable Music access.',503);
- if(response.status===429)return new PublicError('The music service is busy or has reached its account limit. Your choices are saved. Please try again later.',429);
- if(code==='quota_exceeded'||response.status===402)return new PublicError('The music account needs more song credits. Your choices are saved.',503);
- if(response.status===422||code==='bad_composition_plan')return new PublicError('Those song directions could not be arranged. Try another version or change one choice.',422);
- return new PublicError(stage==='plan'?'The music connection could not plan this song. Ask the studio administrator to check Music access and billing.':'The music service could not finish this song. Your choices are saved.',502);
+ // Provider messages can contain the creator's prompt. Only expose recognized
+ // error codes and HTTP status, never the raw response body or request headers.
+ const knownCodes=new Set(['invalid_api_key','missing_permissions','quota_exceeded','rate_limit_exceeded','too_many_concurrent_requests','bad_composition_plan','bad_request','invalid_model_id','model_not_found','model_not_supported','model_not_available','prompt_too_long','content_policy_violation','prompt_blocked','payment_required','subscription_required']);
+ let code='unknown';
+ try{
+  const data=await response.clone().json() as {detail?:{status?:unknown;code?:unknown};error?:{code?:unknown};code?:unknown};
+  const value=data?.detail?.status||data?.detail?.code||data?.error?.code||data?.code;
+  if(typeof value==='string'&&knownCodes.has(value))code=value;
+ }catch{}
+ console.error('Eleven Music request failed',{stage,httpStatus:response.status,code,requestId:response.headers.get('request-id')||response.headers.get('x-request-id')||undefined});
+ const fail=(message:string,status=502)=>new PublicError(`${message} (Music ${stage}: HTTP ${response.status}${code==='unknown'?'':`, ${code}`}).`,status);
+ if(code==='quota_exceeded'||response.status===402)return fail('The music account has reached its credit limit. Your choices are saved',503);
+ if(response.status===401||code==='invalid_api_key')return fail('The music connection needs to be reconnected by the studio administrator',503);
+ if(['invalid_model_id','model_not_found','model_not_supported','model_not_available'].includes(code))return fail('The selected music model is unavailable. Ask the studio administrator to check the music model setting',503);
+ if(response.status===403||code==='missing_permissions')return fail('ElevenLabs refused permission for this music request. Ask the studio administrator to check the music connection',503);
+ if(response.status===429)return fail('The music service is busy or has reached its request limit. Your choices are saved. Please try again later',429);
+ if(response.status===422||code==='bad_composition_plan'||code==='prompt_too_long')return fail('Those song directions could not be arranged. Try another version or change one choice',422);
+ if(code==='content_policy_violation'||code==='prompt_blocked')return fail('The music service could not accept those song directions. Please change your description',422);
+ if(response.status>=500)return fail('The music service had a problem. Your choices are saved. Please try again later');
+ return fail(stage==='plan'?'The music service could not plan this song. Your choices are saved. Share the error below with the studio administrator':'The music service could not finish this song. Your choices are saved. Share the error below with the studio administrator');
 }
 export async function generate(p:Project,sample:boolean,change:string,previous?:Artifact):Promise<Output>{
  const cap=p.journey.capability;
