@@ -9,10 +9,14 @@ export default function Player({ src }: { src: string }) {
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [error, setError] = useState('');
-  const format = (seconds: number) =>
+  const format = (seconds: number) => {
+    if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+    return (
     `${Math.floor(seconds / 60)}:${Math.floor(seconds % 60)
       .toString()
-      .padStart(2, '0')}`;
+      .padStart(2, '0')}`
+    );
+  };
 
   return (
     <div className="audio-player">
@@ -20,8 +24,9 @@ export default function Player({ src }: { src: string }) {
         ref={audio}
         src={src}
         preload="metadata"
-        onTimeUpdate={() => setTime(audio.current?.currentTime || 0)}
-        onLoadedMetadata={() => setDuration(audio.current?.duration || 0)}
+        onTimeUpdate={() => setTime(Number.isFinite(audio.current?.currentTime) ? audio.current?.currentTime || 0 : 0)}
+        onLoadedMetadata={() => setDuration(Number.isFinite(audio.current?.duration) ? audio.current?.duration || 0 : 0)}
+        onDurationChange={() => setDuration(Number.isFinite(audio.current?.duration) ? audio.current?.duration || 0 : 0)}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
