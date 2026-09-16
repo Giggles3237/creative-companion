@@ -8,7 +8,7 @@ function provider(responses){
  const calls=[],logs=[],exports={};
  class PublicError extends Error {constructor(message,status){super(message);this.status=status;}}
  const source=ts.transpileModule(fs.readFileSync('lib/creative/providers.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText;
- vm.runInNewContext(source,{exports,Response,AbortSignal,Uint8Array,console:{error:(...args)=>logs.push(args)},fetch:async(url,options)=>{calls.push({url,body:JSON.parse(options.body)});assert.ok(responses.length,'unexpected provider call');return responses.shift();},require:name=>name==='./server'?{PublicError,provider:async()=>({key:'secret-test-key',model:'music_v2'})}:name==='./engine'?{selectionsText:()=> 'A cheerful country celebration'}:{}});
+ vm.runInNewContext(source,{exports,Response,AbortSignal,Uint8Array,console:{error:(...args)=>logs.push(args)},fetch:async(url,options)=>{calls.push({url,body:JSON.parse(options.body)});assert.ok(responses.length,'unexpected provider call');return responses.shift();},require:name=>name==='./server'?{PublicError,provider:async()=>({key:'secret-test-key',model:undefined})}:name==='./engine'?{selectionsText:()=> 'A cheerful country celebration'}:{}});
  return {generate:exports.generate,calls,logs};
 }
 const project={journey:{capability:'generate_music',instruction:'Write an original song.'},session:{history:[{stepId:'subject',value:'love',label:'Someone I love'},{stepId:'voice',value:'singing'}]},artifacts:[]};
@@ -45,7 +45,9 @@ test('successful vocal song keeps the plan lyrics and generated audio',async()=>
  const app=provider([json(plan),new Response(new Uint8Array([73,68,51]))]);
  const result=await app.generate(project,false,'');
  assert.equal(app.calls[0].url,'https://api.elevenlabs.io/v1/music/plan');
+ assert.equal(app.calls[0].body.model_id,undefined);
  assert.deepEqual(app.calls[1].body.composition_plan,plan);
+ assert.equal(app.calls[1].body.model_id,undefined);
  assert.equal(result.text,plan.chunks[0].text);assert.equal(result.bytes.length,3);
 });
 test('planning validation failures fall back to direct composition',async()=>{
@@ -53,8 +55,9 @@ test('planning validation failures fall back to direct composition',async()=>{
  const result=await app.generate(project,false,'');
  assert.equal(app.calls.length,2);
  assert.equal(app.calls[0].url,'https://api.elevenlabs.io/v1/music/plan');
- assert.equal(app.calls[1].url,'https://api.elevenlabs.io/v1/music?output_format=mp3_48000_192');
+ assert.equal(app.calls[1].url,'https://api.elevenlabs.io/v1/music');
  assert.equal(app.calls[1].body.composition_plan,undefined);
+ assert.equal(app.calls[1].body.model_id,undefined);
  assert.match(app.calls[1].body.prompt,/Create one original 40-second song/);
  assert.equal(result.bytes.length,3);
 });
