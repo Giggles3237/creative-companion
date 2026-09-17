@@ -16,15 +16,15 @@ export const coloringDetails = [
   {
     id: 'intricate',
     label: 'More intricate',
-    description: 'Smaller spaces and rich decorative patterns.',
+    description: 'Extra detail with clear, comfortable coloring spaces.',
     instruction:
-      'Use intricate decorative patterns, layered motifs, many smaller closed shapes, and a richly detailed composition suited to adult coloring. Keep every region clearly enclosed and readable; avoid solid black areas or shading.',
+      'Add extra detail through a limited number of well-spaced decorative shapes inside a clear main subject. Use medium-sized enclosed coloring spaces with only a few smaller accents. Keep the background sparse and leave generous breathing room. Avoid dense repeating patterns, overlapping motifs, tangles, tiny slivers, micro-details, crosshatching, and texture strokes. More intricate means more thoughtfully placed colorable shapes, never a busier or crowded page.',
   },
 ] as const;
 export function coloringInstruction(detail: string) {
   const option = coloringDetails.find((option) => option.id === detail);
   if (!option) throw new Error('Please choose one of the detail levels shown.');
-  return `Create a black and white coloring book page with crisp black outlines, closed shapes, white interiors, no gray shading, no color, no text. Follow the creator’s subject. Detail level: ${option.label}. ${option.instruction}`;
+  return `Create a black and white coloring book page with solid, continuous, uniform black outlines and fully closed shapes on a pure white background. Every boundary between adjacent coloring spaces must be unbroken and meet cleanly at its endpoints, with no gaps, dashed lines, sketchy strokes, faint lines, or disconnected decorative marks. Use bold outlines approximately 4–6 pixels wide at 1024px resolution and keep coloring spaces at least 12 pixels across wherever possible. Each shape must have a spacious white interior suitable for tap-to-fill coloring. No gray shading, gradients, color, text, or large solid black areas. Keep a clear visual hierarchy and a sparse background. Prioritize reliable, comfortable coloring over decorative complexity even if the subject asks for many details. Follow the creator’s subject. Detail level: ${option.label}. ${option.instruction}`;
 }
 export type ColoringPage = {
   id: string;
@@ -33,6 +33,64 @@ export type ColoringPage = {
   colors: string;
   updatedAt: string;
 };
+// Normalize AI line art after resizing. Close only tiny raster gaps, then
+// reinforce boundaries by one pixel so tap-to-fill does not leak through them.
+// This does not reconstruct intentionally open or missing contours.
+export function prepareLineArt(
+  rgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+) {
+  const ink = new Uint8Array(width * height);
+  for (let i = 0; i < ink.length; i++) {
+    const alpha = rgba[i * 4 + 3] / 255;
+    const luminance =
+      (rgba[i * 4] * 0.299 +
+        rgba[i * 4 + 1] * 0.587 +
+        rgba[i * 4 + 2] * 0.114) *
+        alpha +
+      255 * (1 - alpha);
+    ink[i] = luminance < 220 ? 1 : 0;
+  }
+  function morph(source: Uint8Array, dilate: boolean) {
+    const result = new Uint8Array(source.length);
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < width; x++) {
+        let value = dilate ? 0 : 1;
+        for (let dy = -1; dy <= 1; dy++)
+          for (let dx = -1; dx <= 1; dx++) {
+            const nx = x + dx,
+              ny = y + dy;
+            // Extend edge pixels rather than wrapping across rows or trimming borders.
+            const sample =
+              source[
+                Math.max(0, Math.min(height - 1, ny)) * width +
+                  Math.max(0, Math.min(width - 1, nx))
+              ];
+            value = dilate ? Math.max(value, sample) : Math.min(value, sample);
+          }
+        result[y * width + x] = value;
+      }
+    return result;
+  }
+  const closed = morph(morph(ink, true), false);
+  const output = new Uint8ClampedArray(rgba.length).fill(255);
+  for (let y = 0; y < height; y++)
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      const boundary =
+        closed[i] ||
+        (x > 0 && closed[i - 1]) ||
+        (x < width - 1 && closed[i + 1]) ||
+        (y > 0 && closed[i - width]) ||
+        (y < height - 1 && closed[i + width]);
+      output[i * 4] =
+        output[i * 4 + 1] =
+        output[i * 4 + 2] =
+          boundary ? 0 : 255;
+    }
+  return output;
+}
 export function photoOutline(
   rgba: Uint8ClampedArray,
   width: number,

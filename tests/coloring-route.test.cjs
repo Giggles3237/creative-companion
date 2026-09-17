@@ -151,7 +151,7 @@ test('AI generation applies each detail level and preserves the subject', async 
       detail === 'simple'
         ? /few large/
         : detail === 'intricate'
-          ? /many smaller/
+          ? /medium-sized enclosed/
           : /moderate detail/,
     );
   }

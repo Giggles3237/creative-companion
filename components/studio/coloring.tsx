@@ -7,6 +7,7 @@ import {
   coloringDetails,
   fillRegion,
   photoOutline,
+  prepareLineArt,
 } from '@/lib/creative/coloring';
 import type { ColoringPage } from '@/lib/creative/coloring';
 import type { Artifact, Project } from '@/lib/creative/types';
@@ -161,14 +162,7 @@ export default function Coloring({
       const data = ctx.getImageData(0, 0, 768, 768);
       if (!resume) {
         if (lineArt) {
-          for (let i = 0; i < data.data.length; i += 4) {
-            const v =
-              data.data[i] + data.data[i + 1] + data.data[i + 2] < 540
-                ? 0
-                : 255;
-            data.data[i] = data.data[i + 1] = data.data[i + 2] = v;
-            data.data[i + 3] = 255;
-          }
+          data.data.set(prepareLineArt(data.data, 768, 768));
         } else data.data.set(photoOutline(data.data, 768, 768));
         ctx.putImageData(data, 0, 0);
       }

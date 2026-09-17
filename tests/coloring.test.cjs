@@ -11,7 +11,8 @@ vm.runInNewContext(
   }).outputText,
   { exports: exportsObj, Uint8ClampedArray, Uint8Array, Float32Array, Math },
 );
-const { fillRegion, photoOutline } = exportsObj;
+const { fillRegion, photoOutline, prepareLineArt, coloringInstruction } =
+  exportsObj;
 test('fill respects outline boundaries and allows changing an existing color', () => {
   const outline = new Uint8ClampedArray(5 * 5 * 4).fill(255),
     pixels = outline.slice();
@@ -40,4 +41,58 @@ test('photo conversion produces opaque black and white outlines', () => {
     assert.ok(result[i] === 0 || result[i] === 255);
     assert.equal(result[i + 3], 255);
   }
+});
+
+test('AI outline cleanup closes a tiny gap in a faint boundary and prevents fill leaking', () => {
+  const width = 24,
+    height = 24,
+    input = new Uint8ClampedArray(width * height * 4).fill(255);
+  const ink = (x, y) => {
+    const i = (y * width + x) * 4;
+    input[i] = input[i + 1] = input[i + 2] = 200;
+  };
+  for (let x = 4; x <= 19; x++) {
+    ink(x, 4);
+    ink(x, 19);
+  }
+  for (let y = 4; y <= 19; y++) {
+    ink(4, y);
+    ink(19, y);
+  }
+  for (const x of [10, 11]) {
+    const i = (4 * width + x) * 4;
+    input[i] = input[i + 1] = input[i + 2] = 255;
+  }
+  const outline = prepareLineArt(input, width, height),
+    colors = new Uint8ClampedArray(input.length).fill(255);
+  assert.equal(outline[(4 * width + 10) * 4], 0);
+  assert.equal(outline[(12 * width + 12) * 4], 255);
+  fillRegion(outline, colors, width, height, 12, 12, '#ff0000');
+  assert.equal(colors[(12 * width + 12) * 4 + 1], 0);
+  assert.equal(colors[(2 * width + 12) * 4 + 1], 255);
+  assert.equal(colors[(12 * width + 22) * 4 + 1], 255);
+});
+test('outline cleanup keeps blank and transparent backgrounds white and does not wrap across rows', () => {
+  const blank = new Uint8ClampedArray(10 * 10 * 4).fill(255);
+  assert.deepEqual(prepareLineArt(blank, 10, 10), blank);
+  const transparent = new Uint8ClampedArray(blank.length);
+  assert.deepEqual(prepareLineArt(transparent, 10, 10), blank);
+  for (let y = 0; y < 10; y++)
+    for (let c = 0; c < 3; c++) blank[(y * 10 + 9) * 4 + c] = 0;
+  const outline = prepareLineArt(blank, 10, 10);
+  assert.equal(outline[5 * 10 * 4], 255);
+  assert.equal(outline[(5 * 10 + 9) * 4], 0);
+});
+test('every detail level prioritizes solid boundaries and intricate pages limit visual density', () => {
+  for (const detail of ['simple', 'balanced', 'intricate']) {
+    const prompt = coloringInstruction(detail);
+    assert.match(prompt, /solid, continuous, uniform black outlines/);
+    assert.match(prompt, /no gaps/);
+    assert.match(prompt, /at least 12 pixels/);
+  }
+  assert.match(coloringInstruction('intricate'), /Keep the background sparse/);
+  assert.match(
+    coloringInstruction('intricate'),
+    /Avoid dense repeating patterns/,
+  );
 });
