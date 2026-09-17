@@ -1,3 +1,31 @@
+export const coloringDetails = [
+  {
+    id: 'simple',
+    label: 'Less intricate',
+    description: 'Large spaces and a few easy details.',
+    instruction:
+      'Use very simple compositions, a few large closed shapes, minimal interior details, broad outlines, and spacious backgrounds. Avoid tiny regions and repeated patterns.',
+  },
+  {
+    id: 'balanced',
+    label: 'A little detail',
+    description: 'A comfortable mix of big and small spaces.',
+    instruction:
+      'Use moderate detail with a balanced mix of medium and large closed shapes, a few decorative details, and an uncluttered background.',
+  },
+  {
+    id: 'intricate',
+    label: 'More intricate',
+    description: 'Smaller spaces and rich decorative patterns.',
+    instruction:
+      'Use intricate decorative patterns, layered motifs, many smaller closed shapes, and a richly detailed composition suited to adult coloring. Keep every region clearly enclosed and readable; avoid solid black areas or shading.',
+  },
+] as const;
+export function coloringInstruction(detail: string) {
+  const option = coloringDetails.find((option) => option.id === detail);
+  if (!option) throw new Error('Please choose one of the detail levels shown.');
+  return `Create a black and white coloring book page with crisp black outlines, closed shapes, white interiors, no gray shading, no color, no text. Follow the creator’s subject. Detail level: ${option.label}. ${option.instruction}`;
+}
 export type ColoringPage = {
   id: string;
   title: string;

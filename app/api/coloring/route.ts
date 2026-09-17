@@ -11,6 +11,7 @@ import {
 import { generate } from '@/lib/creative/providers';
 import { journeys } from '@/lib/creative/journeys';
 import type { Project } from '@/lib/creative/types';
+import { coloringDetails, coloringInstruction } from '@/lib/creative/coloring';
 import type { ColoringPage } from '@/lib/creative/coloring';
 export const dynamic = 'force-dynamic';
 const store = () =>
@@ -61,6 +62,12 @@ export async function POST(request: Request) {
         throw new PublicError(
           'Describe your coloring page in up to 600 characters.',
         );
+      const detail = b.detail === undefined ? 'balanced' : b.detail;
+      if (
+        typeof detail !== 'string' ||
+        !coloringDetails.some((option) => option.id === detail)
+      )
+        throw new PublicError('Please choose one of the detail levels shown.');
       const count = await db()
         .prepare(
           'SELECT COUNT(*) AS n FROM generations WHERE owner=? AND created_at>?',
@@ -74,8 +81,7 @@ export async function POST(request: Request) {
         );
       const j = {
         ...journeys.find((j) => j.capability === 'generate_image')!,
-        instruction:
-          'Create a black and white coloring book page with clear thick black outlines, closed shapes, generous white spaces, no gray shading, no color, no text. Follow the creator’s subject.',
+        instruction: coloringInstruction(detail),
       };
       const now = new Date().toISOString(),
         id = crypto.randomUUID();
@@ -87,6 +93,12 @@ export async function POST(request: Request) {
           node: 'create',
           history: [
             { stepId: 'subject', value: 'custom', label: b.prompt.trim() },
+            {
+              stepId: 'detail',
+              value: detail,
+              label: coloringDetails.find((option) => option.id === detail)!
+                .label,
+            },
           ],
           seed: 1,
         },
@@ -124,7 +136,7 @@ export async function POST(request: Request) {
           'running',
           'generate_image',
           'configured',
-          JSON.stringify({ coloring: true }),
+          JSON.stringify({ coloring: true, detail }),
           now,
           now,
         )

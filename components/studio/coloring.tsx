@@ -3,7 +3,11 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import type { PointerEvent } from 'react';
 import { ArrowLeft, Download, Palette, Undo2 } from 'lucide-react';
-import { fillRegion, photoOutline } from '@/lib/creative/coloring';
+import {
+  coloringDetails,
+  fillRegion,
+  photoOutline,
+} from '@/lib/creative/coloring';
 import type { ColoringPage } from '@/lib/creative/coloring';
 import type { Artifact, Project } from '@/lib/creative/types';
 const palette = [
@@ -19,20 +23,6 @@ const palette = [
   '#996b4c',
   '#343941',
   '#ffffff',
-];
-const collection = [
-  {
-    title: 'A peaceful mountain lake',
-    src: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=800&auto=format&fit=crop',
-  },
-  {
-    title: 'Flowers in bloom',
-    src: 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=800&auto=format&fit=crop',
-  },
-  {
-    title: 'A curious cat',
-    src: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=800&auto=format&fit=crop',
-  },
 ];
 function layer() {
   const c = document.createElement('canvas');
@@ -86,7 +76,14 @@ export default function Coloring({
     [color, setColor] = useState(palette[0]),
     [tool, setTool] = useState<'fill' | 'brush'>('fill'),
     [size, setSize] = useState(18),
-    [prompt, setPrompt] = useState(''),
+    [prompt, setPrompt] = useState(
+      initial?.selections.find((selection) => selection.stepId === 'subject')
+        ?.label || '',
+    ),
+    [detail, setDetail] = useState(
+      initial?.selections.find((selection) => selection.stepId === 'detail')
+        ?.value || 'balanced',
+    ),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [status, setStatus] = useState(''),
@@ -197,11 +194,30 @@ export default function Coloring({
       setStatus(resume ? 'Saved to your account' : 'Ready to make it yours');
     });
   }
+  async function loadArtwork(art: Artifact) {
+    const detailChoice = art.selections.find(
+      (selection) => selection.stepId === 'detail',
+    );
+    if (detailChoice) {
+      const subject = art.selections.find(
+        (selection) => selection.stepId === 'subject',
+      );
+      if (subject) setPrompt(subject.label);
+      if (coloringDetails.some((option) => option.id === detailChoice.value))
+        setDetail(detailChoice.value);
+    }
+    await load(art.media || art.image!, art.title, !!detailChoice);
+  }
   useEffect(() => {
     void request()
       .then((d) => setSaved(d.pages))
       .catch((e) => setError(e.message));
-    if (initial) void load(initial.media || initial.image!, initial.title);
+    if (initial)
+      void load(
+        initial.media || initial.image!,
+        initial.title,
+        initial.selections.some((selection) => selection.stepId === 'detail'),
+      );
     // Load the initial source once when this workspace opens.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -316,8 +332,8 @@ export default function Coloring({
           A little color, all your own.
         </h1>
         <p>
-          Start with a photo, something you’ve made, or a new idea. Choose every
-          color yourself.
+          Imagine something you’d love to color. Make it as simple or intricate
+          as you like, and choose every color yourself.
         </p>
       </div>
       {error && (
@@ -325,89 +341,97 @@ export default function Coloring({
           {error}
         </p>
       )}
-      <div className="coloring-sources">
-        <div>
-          <h2>From the photo collection</h2>
-          <div className="coloring-presets">
-            {collection.map((i) => (
-              <button
-                disabled={busy}
-                key={i.title}
-                onClick={() => void load(i.src, i.title)}
-              >
-                <img src={i.src} alt="" />
-                <span>{i.title}</span>
-              </button>
-            ))}
-          </div>
+      <div className="coloring-imagine">
+        <h2>Imagine a coloring page</h2>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void task(async () => {
+              const d = await request({ action: 'generate', prompt, detail });
+              await load(d.image, prompt.slice(0, 100), true);
+            });
+          }}
+        >
+          <label htmlFor="coloring-prompt">What would you like to color?</label>
+          <textarea
+            id="coloring-prompt"
+            value={prompt}
+            maxLength={600}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="A cozy cottage surrounded by wildflowers"
+          />
+          <fieldset className="coloring-detail">
+            <legend>How much detail would you like?</legend>
+            <div className="coloring-detail-options">
+              {coloringDetails.map((option) => (
+                <label
+                  key={option.id}
+                  aria-label={option.label}
+                  className={detail === option.id ? 'selected' : ''}
+                >
+                  <input
+                    type="radio"
+                    name="coloring-detail"
+                    value={option.id}
+                    checked={detail === option.id}
+                    disabled={busy}
+                    onChange={() => setDetail(option.id)}
+                  />
+                  <span>
+                    <strong>{option.label}</strong>
+                    <small>{option.description}</small>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
           <p className="setting-note">
-            Collection photos from Unsplash. Clear, simple photos make the best
-            outlines.
+            Try another detail level with the same idea to create a new version.
+            Your saved coloring pages stay in your collection.
           </p>
-        </div>
-        <div>
-          <h2>Use a personal photo</h2>
-          <label className="coloring-upload">
-            Choose a photo
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              disabled={busy}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                if (!file) return;
-                if (file.size > 12000000) {
-                  setError('Choose a photo smaller than 12 MB.');
-                  return;
-                }
-                const url = URL.createObjectURL(file);
-                void load(
-                  url,
-                  file.name.replace(/\.[^.]+$/, '').slice(0, 100),
-                ).finally(() => URL.revokeObjectURL(url));
-              }}
-            />
-          </label>
-          <p className="setting-note">
-            Your photo becomes a black and white outline. The original stays on
-            your device.
-          </p>
-          <h2>Imagine a coloring page</h2>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              void task(async () => {
-                const d = await request({ action: 'generate', prompt });
-                await load(d.image, prompt.slice(0, 100), true);
-              });
-            }}
+          <button
+            className="button"
+            disabled={busy || !available || !prompt.trim()}
           >
-            <label htmlFor="coloring-prompt">
-              What would you like to color?
-            </label>
-            <textarea
-              id="coloring-prompt"
-              value={prompt}
-              maxLength={600}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="A cozy cottage surrounded by wildflowers"
-            />
-            <button
-              className="button"
-              disabled={busy || !available || !prompt.trim()}
-            >
-              Create with AI
-            </button>
-          </form>
-          {!available && (
-            <p className="setting-note">
-              AI coloring pages will be available when artwork creation is
-              connected.
-            </p>
-          )}
-        </div>
+            Create with AI
+          </button>
+        </form>
+        {!available && (
+          <p className="setting-note">
+            AI coloring pages will be available when artwork creation is
+            connected.
+          </p>
+        )}
       </div>
+      <details className="coloring-other-source">
+        <summary>Or use a personal photo</summary>
+        <label className="coloring-upload">
+          Choose a photo
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            disabled={busy}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (!file) return;
+              if (file.size > 12000000) {
+                setError('Choose a photo smaller than 12 MB.');
+                return;
+              }
+              const url = URL.createObjectURL(file);
+              void load(
+                url,
+                file.name.replace(/\.[^.]+$/, '').slice(0, 100),
+              ).finally(() => URL.revokeObjectURL(url));
+            }}
+          />
+        </label>
+        <p className="setting-note">
+          Your photo becomes a black and white outline. The original stays on
+          your device.
+        </p>
+      </details>
       {projects.some((p) => p.artifacts.some((a) => a.kind === 'image')) && (
         <section className="continue-section">
           <h2>Color something you’ve made</h2>
@@ -422,7 +446,7 @@ export default function Coloring({
                 <button
                   key={a.id}
                   disabled={busy}
-                  onClick={() => void load(a.media || a.image!, a.title)}
+                  onClick={() => void loadArtwork(a)}
                 >
                   <img src={a.media || a.image} alt="" />
                   <span>{a.title}</span>

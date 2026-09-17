@@ -4,7 +4,22 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
+const crypto = require('node:crypto');
+const coloring = {};
+vm.runInNewContext(
+  ts.transpileModule(fs.readFileSync('lib/creative/coloring.ts', 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS },
+  }).outputText,
+  { exports: coloring },
+);
 function route(owner = 'alice') {
+  const generated = [];
+  const db = {
+    prepare: () => ({
+      bind: () => ({ first: async () => ({ n: 0 }), run: async () => ({}) }),
+    }),
+    batch: async () => [],
+  };
   const data = new Map(),
     exports = {};
   class PublicError extends Error {
@@ -34,10 +49,23 @@ function route(owner = 'alice') {
       Request,
       Date,
       Buffer,
+      crypto,
       require: (name) => {
         if (name === '@netlify/blobs') return { getStore: () => store };
+        if (name === '@/lib/creative/coloring') return coloring;
+        if (name === '@/lib/creative/journeys')
+          return { journeys: [{ capability: 'generate_image' }] };
+        if (name === '@/lib/creative/providers')
+          return {
+            generate: async (project) => {
+              generated.push(project);
+              return { bytes: Buffer.from('image') };
+            },
+          };
         if (name === '@/lib/creative/server')
           return {
+            db: () => db,
+            putMedia: async () => {},
             user: async () => {
               if (!owner) throw new PublicError('Sign in', 401);
               return { userId: owner };
@@ -52,7 +80,7 @@ function route(owner = 'alice') {
       },
     },
   );
-  return { app: exports, data };
+  return { app: exports, data, generated };
 }
 const page = {
   id: '12345678-1234-1234-1234-123456789abc',
@@ -91,4 +119,50 @@ test('coloring rejects unauthenticated saves and invalid image payloads', async 
     (await route().app.POST(save({ ...page, id: '../bob' }))).status,
     400,
   );
+});
+
+const generateRequest = (detail) =>
+  new Request('https://studio.test/api/coloring', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'generate',
+      prompt: 'A cottage with flowers',
+      ...(detail === undefined ? {} : { detail }),
+    }),
+  });
+test('AI generation applies each detail level and preserves the subject', async () => {
+  for (const detail of ['simple', 'balanced', 'intricate']) {
+    const { app, generated } = route();
+    assert.equal((await app.POST(generateRequest(detail))).status, 200);
+    assert.equal(generated.length, 1);
+    const project = generated[0];
+    assert.equal(
+      project.session.history.find((s) => s.stepId === 'detail').value,
+      detail,
+    );
+    assert.equal(
+      project.session.history.find((s) => s.stepId === 'subject').label,
+      'A cottage with flowers',
+    );
+    assert.match(project.journey.instruction, /closed shapes/);
+    assert.match(
+      project.journey.instruction,
+      detail === 'simple'
+        ? /few large/
+        : detail === 'intricate'
+          ? /many smaller/
+          : /moderate detail/,
+    );
+  }
+});
+test('AI generation defaults to balanced detail and rejects unsupported choices', async () => {
+  const { app, generated } = route();
+  assert.equal((await app.POST(generateRequest(undefined))).status, 200);
+  assert.equal(
+    generated[0].session.history.find((s) => s.stepId === 'detail').value,
+    'balanced',
+  );
+  assert.equal((await app.POST(generateRequest('extreme'))).status, 400);
+  assert.equal(generated.length, 1);
 });

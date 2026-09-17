@@ -95,9 +95,9 @@ This is a private-preview-quality V1 for hands-on testing with Terry. It is read
 
 ### Personalized coloring
 
-The studio’s **Make a coloring page** workspace offers an Unsplash photo collection,
-local JPEG/PNG/WebP uploads, AI coloring-page prompts using the existing artwork
-provider, and reuse of earlier image creations. Photo conversion runs in the
+The studio’s **Make a coloring page** workspace centers on AI coloring-page prompts using the existing artwork
+provider, with less intricate, balanced, and more intricate detail choices.
+Local JPEG/PNG/WebP uploads and reuse of earlier image creations are also available. Photo conversion runs in the
 browser; only the resulting outlines and coloring layers are saved. Clear photos
 with simple backgrounds work best. Fill uses the original outline as its boundary,
 so users can recolor spaces; a brush handles open shapes. The palette supports
@@ -107,4 +107,4 @@ Coloring pages are private JSON objects in the `creative-companion-coloring`
 Netlify Blobs store, scoped to the authenticated user. Reopening a page restores
 its outline and separate color layer. AI pages also appear in My creations and
 share the existing daily generation limit. No database migration or additional
-provider key is required. The preset photo collection needs an internet connection.
+provider key is required.
